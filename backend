@@ -1,0 +1,48 @@
+from fastapi import FastAPI, WebSocket
+import cv2
+import numpy as np
+import asyncio
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+app = FastAPI()
+
+# Configuration Google Sheets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("basketball-vision-451308-6d80c1a878e5.json", scope)
+client = gspread.authorize(creds)
+sheet = client.open("Basketball Vision").sheet1
+
+def detect_basket(frame):
+    """Détection du panier avec OpenCV"""
+    # Simulation de détection de panier
+    detected = np.random.choice([True, False], p=[0.1, 0.9])  # Simule une détection à 10%
+    if detected:
+        score_type = np.random.choice([2, 3])  # Simule un 2 pts ou un 3 pts
+        return score_type
+    return None
+
+async def video_stream(websocket: WebSocket):
+    cap = cv2.VideoCapture(0)  # Capture vidéo (à adapter pour une source spécifique)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        score = detect_basket(frame)
+        if score:
+            await websocket.send_json({"score": score})
+            update_google_sheets(score)
+        await asyncio.sleep(1)
+    cap.release()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    await video_stream(websocket)
+
+def update_google_sheets(score):
+    """Enregistrement des scores dans Google Sheets"""
+    last_row = sheet.get_all_values()
+    last_score = int(last_row[-1][2]) if last_row else 0
+    new_score = last_score + score
+    sheet.append_row([2 if score == 2 else "", 3 if score == 3 else "", new_score])
